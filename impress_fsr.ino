@@ -2,9 +2,9 @@
 // Activates buzzer when load is present on one FSR but not the other
 
 // Pin definitions
-const int FSR1_PIN = A0;        // First FSR analog pin
-const int FSR2_PIN = A1;        // Second FSR analog pin
-const int BUZZER_PIN = 8;       // Buzzer digital pin
+const int FSR1_PIN = 14;        // First FSR analog pin
+const int FSR2_PIN = 27;        // Second FSR analog pin
+const int BUZZER_PIN = 32;       // Buzzer digital pin
 
 // Threshold values
 const int LOAD_THRESHOLD = 100;  // Minimum reading to consider as "load present"

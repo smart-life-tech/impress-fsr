@@ -36,7 +36,7 @@ void setup() {
   Serial.println("FSR Imbalance Detection System Started");
   Serial.println("Monitoring for load imbalance...");
   ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
-  ledcWriteTone(ledcChannel, 1000);  // Play 1kHz tone
+  ledcWriteTone(ledcChannel, 120);  // Play 1kHz tone
   delay(1000);                        // Duration
   ledcWriteTone(ledcChannel, 0);     // Stop tone
 }
@@ -111,7 +111,7 @@ void activateBuzzer() {
   buzzerStartTime = millis();
   //digitalWrite(BUZZER_PIN, HIGH);
   Serial.println("BUZZER ACTIVATED - 5 second alert");
-  ledcWriteTone(ledcChannel, 1000);  // Play 1kHz tone
+  ledcWriteTone(ledcChannel, 200);  // Play 1kHz tone
         
 }
 

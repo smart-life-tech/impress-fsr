@@ -22,6 +22,8 @@ bool buzzerActive = false;
 int fsr1Reading = 0;
 int fsr2Reading = 0;
 
+const int ledcChannel = 0;      // PWM channel
+const int resolution = 8;       // 8-bit resolution
 void setup() {
   // Initialize pins
   pinMode(BUZZER_PIN, OUTPUT);
@@ -31,6 +33,11 @@ void setup() {
   Serial.begin(9600);
   Serial.println("FSR Imbalance Detection System Started");
   Serial.println("Monitoring for load imbalance...");
+  ledcSetup(ledcChannel, 2000, resolution);     // 2kHz tone
+  ledcAttachPin(BUZZER_PIN, ledcChannel);
+  ledcWriteTone(ledcChannel, 1000);  // Play 1kHz tone
+  delay(1000);                        // Duration
+  ledcWriteTone(ledcChannel, 0);     // Stop tone
 }
 
 void loop() {
@@ -101,15 +108,18 @@ void checkImbalance() {
 void activateBuzzer() {
   buzzerActive = true;
   buzzerStartTime = millis();
-  digitalWrite(BUZZER_PIN, HIGH);
+  //digitalWrite(BUZZER_PIN, HIGH);
   Serial.println("BUZZER ACTIVATED - 5 second alert");
+  ledcWriteTone(ledcChannel, 1000);  // Play 1kHz tone
+        
 }
 
 void manageBuzzer(unsigned long currentTime) {
   // Turn off buzzer after 5 seconds
   if (buzzerActive && (currentTime - buzzerStartTime >= BUZZER_DURATION)) {
-    digitalWrite(BUZZER_PIN, LOW);
+    //digitalWrite(BUZZER_PIN, LOW);
     buzzerActive = false;
     Serial.println("Buzzer deactivated");
+    ledcWriteTone(ledcChannel, 0);
   }
 }

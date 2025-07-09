@@ -49,9 +49,9 @@ Buzzer (-) ---- GND
 
 | Component | Arduino Pin | Type |
 |-----------|-------------|------|
-| FSR1      | A0          | Analog Input |
-| FSR2      | A1          | Analog Input |
-| Buzzer    | 8           | Digital Output |
+| FSR1      | 34          | Analog Input |
+| FSR2      | 35         | Analog Input |
+| Buzzer    | 32          | Digital Output |
 
 ## Installation
 

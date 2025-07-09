@@ -24,6 +24,8 @@ int fsr2Reading = 0;
 
 const int ledcChannel = 0;      // PWM channel
 const int resolution = 8;       // 8-bit resolution
+#define LEDC_RESOLUTION 8  // bits
+#define LEDC_FREQUENCY 1000  // Hz
 void setup() {
   // Initialize pins
   pinMode(BUZZER_PIN, OUTPUT);
@@ -33,8 +35,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("FSR Imbalance Detection System Started");
   Serial.println("Monitoring for load imbalance...");
-  ledcSetup(ledcChannel, 2000, resolution);     // 2kHz tone
-  ledcAttachPin(BUZZER_PIN, ledcChannel);
+  ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
   ledcWriteTone(ledcChannel, 1000);  // Play 1kHz tone
   delay(1000);                        // Duration
   ledcWriteTone(ledcChannel, 0);     // Stop tone

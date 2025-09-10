@@ -1,71 +1,64 @@
-// FSR Imbalance Detection System
-// Activates buzzer when load is present on one FSR but not the other
-
 // Pin definitions
-const int FSR1_PIN = 34;   // First FSR analog pin
-const int FSR2_PIN = 35;   // Second FSR analog pin
-const int BUZZER_PIN = 32; // Buzzer digital pin
+const int FSR1_PIN = 14;   // First FSR analog pin
+const int FSR2_PIN = 27;   // Second FSR analog pin
+const int BUZZER_PIN = 25; // Buzzer digital pin
 
-// Threshold values
-const int LOAD_THRESHOLD = 100;     // Minimum reading to consider as "load present"
-const int IMBALANCE_THRESHOLD = 50; // Minimum difference to trigger imbalance
+// Thresholds
+const int LOAD_THRESHOLD = 100;
+const int IMBALANCE_THRESHOLD = 50;
 
-// Timing variables
-const unsigned long BUZZER_DURATION = 5000; // 5 seconds in milliseconds
-const unsigned long SAMPLING_INTERVAL = 50; // Sample every 50ms
+// Timing
+const unsigned long BUZZER_DELAY = 5000;    // Delay before buzzer activates
+const unsigned long SAMPLING_INTERVAL = 50; // Sampling interval
 
 unsigned long lastSampleTime = 0;
-unsigned long buzzerStartTime = 0;
+unsigned long imbalanceStartTime = 0;
+
 bool buzzerActive = false;
+bool imbalanceOngoing = false;
 
 // FSR readings
 int fsr1Reading = 0;
 int fsr2Reading = 0;
 
-const int ledcChannel = 0;  // PWM channel
-const int resolution = 8;   // 8-bit resolution
-#define LEDC_RESOLUTION 8   // bits
-#define LEDC_FREQUENCY 1000 // Hz
-unsigned long weightTimer = 1000;
+const int ledcChannel = 0;
+const int resolution = 8;
+#define LEDC_RESOLUTION 8
+#define LEDC_FREQUENCY 1000
+
 void setup()
 {
-  // Initialize pins
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
 
-  // Initialize serial for debugging
   Serial.begin(9600);
   Serial.println("FSR Imbalance Detection System Started");
-  Serial.println("Monitoring for load imbalance...");
+
   ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
-  ledcWriteTone(BUZZER_PIN, 128); // Play 1kHz tone
-  delay(1000);                    // Duration
-  ledcWriteTone(BUZZER_PIN, 0);   // Stop tone
+  ledcWriteTone(BUZZER_PIN, 128);
+  delay(1000);
+  ledcWriteTone(BUZZER_PIN, 0);
 }
 
 void loop()
 {
   unsigned long currentTime = millis();
 
-  // Sample FSRs at regular intervals
   if (currentTime - lastSampleTime >= SAMPLING_INTERVAL)
   {
     sampleFSRs();
-    checkImbalance();
+    detectImbalance(currentTime);
     lastSampleTime = currentTime;
   }
 
-  // Handle buzzer timing
   manageBuzzer(currentTime);
 }
 
 void sampleFSRs()
 {
-  // Read both FSR values
   fsr1Reading = analogRead(FSR1_PIN);
   fsr2Reading = analogRead(FSR2_PIN);
 
-  // Debug output
   Serial.print("FSR1: ");
   Serial.print(fsr1Reading);
   Serial.print(" | FSR2: ");
@@ -74,88 +67,55 @@ void sampleFSRs()
   Serial.println(abs(fsr1Reading - fsr2Reading));
 }
 
-void checkImbalance()
+void detectImbalance(unsigned long currentTime)
 {
-  // Determine if each FSR has a significant load
-  bool fsr1HasLoad = (fsr1Reading > LOAD_THRESHOLD);
-  bool fsr2HasLoad = (fsr2Reading > LOAD_THRESHOLD);
+  bool fsr1Load = fsr1Reading > LOAD_THRESHOLD;
+  bool fsr2Load = fsr2Reading > LOAD_THRESHOLD;
+  int difference = abs(fsr1Reading - fsr2Reading);
 
-  // Check for imbalance conditions:
-  // 1. Load on FSR1 but not FSR2
-  // 2. Load on FSR2 but not FSR1
-  // 3. Both have loads but significant difference
-
-  bool imbalanceDetected = false;
-
-  if (fsr1HasLoad && !fsr2HasLoad)
+  if (fsr1Load && fsr2Load && difference <= IMBALANCE_THRESHOLD)
   {
-    // Load only on FSR1
-    imbalanceDetected = true;
-    Serial.println("IMBALANCE: Load detected only on FSR1");
+    // Both sensors touched evenly -> stop buzzer
+    buzzerActive = false;
+    imbalanceOngoing = false;
+    ledcWriteTone(BUZZER_PIN, 0);
+    Serial.println("Balanced pressure on both sensors – buzzer stopped.");
+    return;
   }
-  else if (!fsr1HasLoad && fsr2HasLoad)
+
+  // Detect imbalance: one pressed, or large difference
+  bool imbalanceDetected =
+      (fsr1Load && !fsr2Load) ||
+      (!fsr1Load && fsr2Load) ||
+      (fsr1Load && fsr2Load && difference > IMBALANCE_THRESHOLD);
+
+  if (imbalanceDetected)
   {
-    // Load only on FSR2
-    imbalanceDetected = true;
-    Serial.println("IMBALANCE: Load detected only on FSR2");
-  }
-  else if (fsr1HasLoad && fsr2HasLoad)
-  {
-    // Both have loads, check for significant difference
-    int difference = abs(fsr1Reading - fsr2Reading);
-    if (difference > IMBALANCE_THRESHOLD)
+    if (!imbalanceOngoing)
     {
-      imbalanceDetected = true;
-      Serial.println("IMBALANCE: Significant load difference detected");
-      weightTimer++;
-    }
-    else if (difference < IMBALANCE_THRESHOLD)
-    {
-      imbalanceDetected = false;
-      Serial.println("BALANCE: less Significant load difference detected");
+      imbalanceOngoing = true;
+      imbalanceStartTime = currentTime;
+      Serial.println("Imbalance detected – starting 5 second timer.");
     }
   }
-
-  // Activate buzzer if imbalance detected and buzzer not already active
-  if (imbalanceDetected && !buzzerActive && (weightTimer > 5000))
+  else
   {
-    activateBuzzer();
+    imbalanceOngoing = false;
+    if (buzzerActive)
+    {
+      buzzerActive = false;
+      ledcWriteTone(BUZZER_PIN, 0);
+      Serial.println("Imbalance cleared – buzzer stopped.");
+    }
   }
-  // de-Activate buzzer if imbalance detected and buzzer  already active
-  if (!imbalanceDetected && buzzerActive)
-  {
-    Serial.println("Buzzer deactivated");
-    ledcWriteTone(BUZZER_PIN, 0);
-    buzzerActive = false;
-    weightTimer = 0; // Reset weight timer after buzzer deactivation
-  }
-
-  if (imbalanceDetected && buzzerActive && (weightTimer > 10000))
-  {
-    Serial.println("Buzzer deactivated after 10 seconds of weight detection");
-    ledcWriteTone(BUZZER_PIN, 0);
-    buzzerActive = false;
-    weightTimer = 0; // Reset weight timer after buzzer deactivation
-  }
-}
-
-void activateBuzzer()
-{
-  buzzerActive = true;
-  buzzerStartTime = millis();
-  // digitalWrite(BUZZER_PIN, HIGH);
-  Serial.println("BUZZER ACTIVATED - 5 second alert");
-  ledcWriteTone(BUZZER_PIN, 200); // Play 1kHz tone
 }
 
 void manageBuzzer(unsigned long currentTime)
 {
-  // Turn off buzzer after 5 seconds
-  if (buzzerActive && (currentTime - buzzerStartTime >= BUZZER_DURATION))
+  if (imbalanceOngoing && !buzzerActive && (currentTime - imbalanceStartTime >= BUZZER_DELAY))
   {
-    // digitalWrite(BUZZER_PIN, LOW);
-    buzzerActive = false;
-    Serial.println("Buzzer deactivated");
-    //ledcWriteTone(BUZZER_PIN, 0);
+    buzzerActive = true;
+    ledcWriteTone(BUZZER_PIN, 200); // Activate buzzer tone
+    Serial.println("BUZZER ACTIVATED after 5 seconds of imbalance.");
   }
 }

@@ -1,4 +1,4 @@
 {
     "board": "arduino:avr:uno",
-    "sketch": "impress_fsr.ino"
+    "sketch": "analogTest\\analogTest.ino"
 }

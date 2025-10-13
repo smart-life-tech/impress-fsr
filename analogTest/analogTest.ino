@@ -13,8 +13,8 @@
  */
 
 // GPIO pins matching impress_fsr.ino
-const int FSR1_PIN = 14; // First FSR analog pin
-const int FSR2_PIN = 27; // Second FSR analog pin
+const int FSR1_PIN = A0; // First FSR analog pin
+const int FSR2_PIN = A1; // Second FSR analog pin
 
 // Test parameters matching impress_fsr.ino
 const int LOAD_THRESHOLD = 100;

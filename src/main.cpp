@@ -10,13 +10,13 @@
 #include <BluetoothSerial.h>
 
 // Firebase configuration (replace with your actual values)
-#define FIREBASE_HOST "your-project.firebaseio.com" // Your Firebase project URL
-#define FIREBASE_AUTH "your-database-secret"        // Your Firebase database secret
+#define FIREBASE_HOST "smart-chair-31447-default-rtdb.firebaseio.com/" 
+#define FIREBASE_AUTH "Y4foCcBVznqKlCtc0FaDt0Qa8x79N5BgrjcPAcpK"        
 FirebaseData firebaseData;
 
 // WiFi credentials (replace with your actual values)
-#define WIFI_SSID "your-wifi-ssid"
-#define WIFI_PASSWORD "your-wifi-password"
+#define WIFI_SSID "TECNO SPARK 5 Air"
+#define WIFI_PASSWORD "1234567890"
 
 // NTP for timestamps
 WiFiUDP ntpUDP;
@@ -84,6 +84,7 @@ void activateBuzzer();
 void manageBuzzer(unsigned long currentTime);
 void checkConnectionMode();
 void sendDataViaBluetooth();
+void generateRecommendation();
 
 void setup()
 {
@@ -98,8 +99,9 @@ void setup()
     // Try WiFi connection first
     setupWiFi();
 
-    // Initialize buzzer
-    ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
+    // Initialize buzzer PWM
+    // ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
+    ledcAttachPin(BUZZER_PIN, LEDC_FREQUENCY);
     ledcWriteTone(BUZZER_PIN, 128); // Play 1kHz tone
     delay(1000);                    // Duration
     ledcWriteTone(BUZZER_PIN, 0);   // Stop tone
@@ -398,9 +400,10 @@ void sendDataToFirebase()
     jsonData += "\"lastFSR2\":" + String(fsr2Reading) + ",";
     jsonData += "\"recommendation\":\"" + lastRecommendation + "\"";
     jsonData += "}";
-
+    FirebaseJson json;
+    json.setJsonData(jsonData); // jsonData is your String containing JSON
     // Send to Firebase
-    if (Firebase.setJSON(firebaseData, "/postureData", jsonData))
+    if (Firebase.setJSON(firebaseData, "/postureData", json))
     {
         Serial.println("Data sent to Firebase successfully");
     }
@@ -422,7 +425,9 @@ void sendDataToFirebase()
         eventData += "}";
 
         String eventPath = "/events/" + String(millis());
-        if (Firebase.setJSON(firebaseData, eventPath, eventData))
+        FirebaseJson json;
+        json.setJsonData(eventData); // jsonData is your String containing JSON
+        if (Firebase.setJSON(firebaseData, eventPath, json))
         {
             Serial.println("Event logged to Firebase");
         }

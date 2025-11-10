@@ -51,7 +51,7 @@ Buzzer (-) ---- GND
 |-----------|-------------|------|
 | FSR1      | 34          | Analog Input |
 | FSR2      | 35         | Analog Input |
-| Buzzer    | 32          | Digital Output |
+| Buzzer    | 323          | Digital Output |
 
 ## Installation
 

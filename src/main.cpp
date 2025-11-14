@@ -101,7 +101,7 @@ void setup()
 
     // Initialize buzzer PWM
     // ledcAttach(BUZZER_PIN, LEDC_FREQUENCY, LEDC_RESOLUTION);
-    ledcAttachPin(BUZZER_PIN, LEDC_FREQUENCY);
+    //ledcAttachPin(BUZZER_PIN, LEDC_FREQUENCY);
     ledcWriteTone(BUZZER_PIN, 128); // Play 1kHz tone
     delay(1000);                    // Duration
     ledcWriteTone(BUZZER_PIN, 0);   // Stop tone

@@ -1,5 +1,5 @@
 
-// FSR Posture Monitoring System with Firebase Analytics
+// FSR Posture Monitoring System with Firebase Analytics with fsr
 // Monitors sitting posture, detects imbalances, logs data to Firebase for health insights
 #include <Arduino.h>
 #include <WiFi.h>

@@ -1,29 +1,29 @@
-
 // FSR Posture Monitoring System with Firebase Analytics
 // Monitors sitting posture, detects imbalances, logs data to Firebase for health insights
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiManager.h>
 #include <FirebaseESP32.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#include <BluetoothSerial.h>
+
 
 // Firebase configuration (replace with your actual values)
 #define FIREBASE_HOST "smart-chair-31447-default-rtdb.firebaseio.com/" 
 #define FIREBASE_AUTH "Y4foCcBVznqKlCtc0FaDt0Qa8x79N5BgrjcPAcpK"        
 FirebaseData firebaseData;
 
+// Device unique identifier
+String deviceID = "";
+
 // WiFi credentials (replace with your actual values)
-#define WIFI_SSID "TECNO SPARK 5 Air"
-#define WIFI_PASSWORD "1234567890"
+#define WIFI_SSID "Linda"
+#define WIFI_PASSWORD "12345678"
 
-// NTP for timestamps
+// NTP for timestamps (GMT+0, update every minute)
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // Update every minute
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000);
 
-// Bluetooth Serial for fallback communication
-BluetoothSerial SerialBT;
+ 
 
 // Connection mode
 enum ConnectionMode
@@ -34,9 +34,9 @@ enum ConnectionMode
 ConnectionMode currentMode = WIFI_MODE;
 
 // Pin definitions
-const int FSR1_PIN = 34;   // Seat FSR analog pin
-const int FSR2_PIN = 35;   // Back FSR analog pin
-const int BUZZER_PIN = 32; // Buzzer digital pin
+const int FSR1_PIN = 14;   // Seat FSR analog pin
+const int FSR2_PIN = 27;   // Back FSR analog pin
+const int BUZZER_PIN = 25; // Buzzer digital pin
 
 // Threshold values
 const int LOAD_THRESHOLD = 100;     // Minimum reading to consider as "load present"
@@ -74,8 +74,10 @@ const int ledcChannel = 0;  // PWM channel
 const int resolution = 8;   // 8-bit resolution
 #define LEDC_RESOLUTION 8   // bits
 #define LEDC_FREQUENCY 1000 // Hz
+
+// Function declarations
 void setupWiFi();
-void setupBluetooth();
+ 
 void sendDataToFirebase();
 void updateAnalytics();
 void sampleFSRs();
@@ -83,8 +85,11 @@ void checkImbalance();
 void activateBuzzer();
 void manageBuzzer(unsigned long currentTime);
 void checkConnectionMode();
-void sendDataViaBluetooth();
+ 
 void generateRecommendation();
+String getFormattedDateTime();
+void cleanupOldEntries(String basePath, int maxEntries);
+String generateDeviceID();
 
 void setup()
 {
@@ -95,6 +100,11 @@ void setup()
     // Initialize serial for debugging
     Serial.begin(9600);
     Serial.println("FSR Posture Monitoring System with Firebase Started");
+
+    // Generate unique device ID from MAC address
+    deviceID = generateDeviceID();
+    Serial.print("Device ID: ");
+    Serial.println(deviceID);
 
     // Try WiFi connection first
     setupWiFi();
@@ -140,20 +150,10 @@ void setupWiFi()
         timeClient.update();
         Serial.println("NTP initialized");
     }
-    else
-    {
-        Serial.println("\nWiFi connection failed. Switching to Bluetooth mode.");
-        currentMode = BT_MODE;
-        setupBluetooth();
-    }
+ 
 }
 
-void setupBluetooth()
-{
-    SerialBT.begin("FSR_Posture_Monitor"); // Bluetooth device name
-    Serial.println("Bluetooth initialized. Device name: FSR_Posture_Monitor");
-}
-
+ 
 void loop()
 {
     unsigned long currentTime = millis();
@@ -191,7 +191,7 @@ void loop()
         if (currentTime - lastFirebaseUpdate >= FIREBASE_UPDATE_INTERVAL)
         {
             updateAnalytics();
-            sendDataViaBluetooth();
+            
             lastFirebaseUpdate = currentTime;
         }
     }
@@ -202,12 +202,7 @@ void checkConnectionMode()
     if (currentMode == WIFI_MODE)
     {
         // Check if WiFi is still connected
-        if (WiFi.status() != WL_CONNECTED)
-        {
-            Serial.println("WiFi connection lost. Switching to Bluetooth mode.");
-            currentMode = BT_MODE;
-            setupBluetooth();
-        }
+     
     }
     else if (currentMode == BT_MODE)
     {
@@ -383,12 +378,13 @@ void generateRecommendation()
 
 void sendDataToFirebase()
 {
-    // Update NTP time
+    // Update NTP time and get full date-time
     timeClient.update();
-    String timestamp = timeClient.getFormattedTime();
+    String timestamp = getFormattedDateTime();
 
-    // Prepare JSON data
+    // Prepare JSON data with device ID
     String jsonData = "{";
+    jsonData += "\"deviceID\":\"" + deviceID + "\",";
     jsonData += "\"timestamp\":\"" + timestamp + "\",";
     jsonData += "\"totalSittingTime\":" + String(totalSittingTime / 1000) + ","; // in seconds
     jsonData += "\"totalImbalanceTime\":" + String(totalImbalanceTime / 1000) + ",";
@@ -400,12 +396,19 @@ void sendDataToFirebase()
     jsonData += "\"lastFSR2\":" + String(fsr2Reading) + ",";
     jsonData += "\"recommendation\":\"" + lastRecommendation + "\"";
     jsonData += "}";
+    
     FirebaseJson json;
-    json.setJsonData(jsonData); // jsonData is your String containing JSON
-    // Send to Firebase
-    if (Firebase.setJSON(firebaseData, "/postureData", json))
+    json.setJsonData(jsonData);
+    
+    // Push data to device-specific path (creates unique key for each entry)
+    String dataPath = "/devices/" + deviceID + "/postureData";
+    if (Firebase.pushJSON(firebaseData, dataPath, json))
     {
         Serial.println("Data sent to Firebase successfully");
+        Serial.println("Timestamp: " + timestamp);
+        
+        // Clean up old entries to keep only last 100
+        cleanupOldEntries(dataPath, 100);
     }
     else
     {
@@ -417,6 +420,7 @@ void sendDataToFirebase()
     if (imbalanceCount > 0)
     {
         String eventData = "{";
+        eventData += "\"deviceID\":\"" + deviceID + "\",";
         eventData += "\"timestamp\":\"" + timestamp + "\",";
         eventData += "\"event\":\"imbalance_detected\",";
         eventData += "\"fsr1\":" + String(fsr1Reading) + ",";
@@ -424,12 +428,16 @@ void sendDataToFirebase()
         eventData += "\"postureScore\":" + String(currentPostureScore);
         eventData += "}";
 
-        String eventPath = "/events/" + String(millis());
-        FirebaseJson json;
-        json.setJsonData(eventData); // jsonData is your String containing JSON
-        if (Firebase.setJSON(firebaseData, eventPath, json))
+        FirebaseJson eventJson;
+        eventJson.setJsonData(eventData);
+        
+        String eventPath = "/devices/" + deviceID + "/events";
+        if (Firebase.pushJSON(firebaseData, eventPath, eventJson))
         {
             Serial.println("Event logged to Firebase");
+            
+            // Clean up old events to keep only last 100
+            cleanupOldEntries(eventPath, 100);
         }
         else
         {
@@ -438,35 +446,142 @@ void sendDataToFirebase()
     }
 }
 
-void sendDataViaBluetooth()
+ 
+// Generate unique device ID from MAC address
+String generateDeviceID()
 {
-    // Prepare data string for Bluetooth transmission
-    String dataString = "POSTURE_DATA:";
-    dataString += "totalSittingTime=" + String(totalSittingTime / 1000) + ",";
-    dataString += "totalImbalanceTime=" + String(totalImbalanceTime / 1000) + ",";
-    dataString += "imbalanceCount=" + String(imbalanceCount) + ",";
-    dataString += "currentPostureScore=" + String(currentPostureScore) + ",";
-    dataString += "avgSeatPressure=" + String(avgSeatPressure, 2) + ",";
-    dataString += "avgBackPressure=" + String(avgBackPressure, 2) + ",";
-    dataString += "lastFSR1=" + String(fsr1Reading) + ",";
-    dataString += "lastFSR2=" + String(fsr2Reading) + ",";
-    dataString += "recommendation=" + lastRecommendation;
-    dataString += "\n";
-
-    // Send via Bluetooth Serial
-    SerialBT.println(dataString);
-    Serial.println("Data sent via Bluetooth: " + dataString);
-
-    // Also send event log if imbalance occurred recently
-    if (imbalanceCount > 0)
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    String macStr = "";
+    for (int i = 0; i < 6; i++)
     {
-        String eventString = "EVENT:imbalance_detected,";
-        eventString += "fsr1=" + String(fsr1Reading) + ",";
-        eventString += "fsr2=" + String(fsr2Reading) + ",";
-        eventString += "postureScore=" + String(currentPostureScore);
-        eventString += "\n";
+        if (mac[i] < 16)
+            macStr += "0";
+        macStr += String(mac[i], HEX);
+    }
+    macStr.toUpperCase();
+    return "FSR_" + macStr;
+}
 
-        SerialBT.println(eventString);
-        Serial.println("Event sent via Bluetooth: " + eventString);
+// Get formatted date-time string (YYYY-MM-DD HH:MM:SS)
+String getFormattedDateTime()
+{
+    unsigned long epochTime = timeClient.getEpochTime();
+    
+    // Calculate date components
+    int currentYear = 1970;
+    int currentMonth = 1;
+    int currentDay = 1;
+    
+    unsigned long days = epochTime / 86400;
+    unsigned long remainingSeconds = epochTime % 86400;
+    
+    int hours = remainingSeconds / 3600;
+    remainingSeconds %= 3600;
+    int minutes = remainingSeconds / 60;
+    int seconds = remainingSeconds % 60;
+    
+    // Simple date calculation (approximate, good enough for logging)
+    int daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    
+    while (days > 0)
+    {
+        int daysInYear = 365;
+        // Check for leap year
+        if ((currentYear % 4 == 0 && currentYear % 100 != 0) || (currentYear % 400 == 0))
+        {
+            daysInYear = 366;
+            daysInMonth[1] = 29;
+        }
+        else
+        {
+            daysInMonth[1] = 28;
+        }
+        
+        if (days >= daysInYear)
+        {
+            days -= daysInYear;
+            currentYear++;
+        }
+        else
+        {
+            break;
+        }
+    }
+    
+    while (days > 0)
+    {
+        if (days >= daysInMonth[currentMonth - 1])
+        {
+            days -= daysInMonth[currentMonth - 1];
+            currentMonth++;
+            if (currentMonth > 12)
+            {
+                currentMonth = 1;
+                currentYear++;
+            }
+        }
+        else
+        {
+            currentDay += days;
+            days = 0;
+        }
+    }
+    
+    // Format as YYYY-MM-DD HH:MM:SS
+    String dateTime = String(currentYear) + "-";
+    if (currentMonth < 10) dateTime += "0";
+    dateTime += String(currentMonth) + "-";
+    if (currentDay < 10) dateTime += "0";
+    dateTime += String(currentDay) + " ";
+    if (hours < 10) dateTime += "0";
+    dateTime += String(hours) + ":";
+    if (minutes < 10) dateTime += "0";
+    dateTime += String(minutes) + ":";
+    if (seconds < 10) dateTime += "0";
+    dateTime += String(seconds);
+    
+    return dateTime;
+}
+
+// Clean up old entries to maintain only the last maxEntries
+void cleanupOldEntries(String basePath, int maxEntries)
+{
+    // Query to get all entries
+    QueryFilter query;
+    
+    if (Firebase.getJSON(firebaseData, basePath))
+    {
+        FirebaseJson &json = firebaseData.jsonObject();
+        size_t count = json.iteratorBegin();
+        
+        // If we have more than maxEntries, delete the oldest ones
+        if (count > maxEntries)
+        {
+            String key, value;
+            int type = 0;
+            int entriesToDelete = count - maxEntries;
+            int deleted = 0;
+            
+            // Iterate through entries and delete oldest ones
+            for (size_t i = 0; i < count && deleted < entriesToDelete; i++)
+            {
+                json.iteratorGet(i, type, key, value);
+                String deletePath = basePath + "/" + key;
+                
+                if (Firebase.deleteNode(firebaseData, deletePath))
+                {
+                    deleted++;
+                    Serial.println("Deleted old entry: " + key);
+                }
+            }
+            
+            json.iteratorEnd();
+            Serial.println("Cleanup complete. Deleted " + String(deleted) + " old entries.");
+        }
+        else
+        {
+            json.iteratorEnd();
+        }
     }
 }
